@@ -23,15 +23,52 @@
 #endif
 
 #include <aws/core/Aws.h>
-#include <aws/core/auth/AWSCredentialsProvider.h>
-#include <aws/core/client/ClientConfiguration.h>
-#include <aws/core/utils/Outcome.h>
 
 #include <aws/monitoring/CloudWatchClient.h>
+#include <aws/monitoring/model/PutMetricDataRequest.h>
+
+#include <aws/logs/CloudWatchLogsClient.h>
+#include <aws/logs/model/InputLogEvent.h>
+#include <aws/logs/model/DescribeLogStreamsRequest.h>
+#include <aws/logs/model/CreateLogGroupRequest.h>
+#include <aws/logs/model/CreateLogStreamRequest.h>
+#include <aws/logs/model/PutLogEventsRequest.h>
 
 #if PLATFORM_WINDOWS
 	#include "HideWindowsPlatformTypes.h"
 #endif
+
+class CLOUDWATCHSDK_API ULogsCustomEventObject
+{
+	friend class FCloudWatchSDKModule;
+
+private:
+	Aws::CloudWatchLogs::CloudWatchLogsClient* LogsClient;
+	FString GroupName;
+	FString StreamName;
+	
+	FString mSequenceToken;
+	Aws::Vector<Aws::CloudWatchLogs::Model::InputLogEvent> mInputEvents;
+	
+	bool bIsGroupCreated = false;
+	bool bIsStreamCreated = false;
+	bool bIsRunning = false;
+
+	static ULogsCustomEventObject* CreateLogsCustomEvent(const FString& GroupName, const FString& StreamName);
+public:
+	void Call(const FString& Message);
+
+private:
+	void PutLogs();
+	void GetSequenceToken();
+	void RegisterGroup();
+	void RegisterStream();
+
+	void OnDescribeLogStreams(const Aws::CloudWatchLogs::CloudWatchLogsClient* Client, const Aws::CloudWatchLogs::Model::DescribeLogStreamsRequest& Request, const Aws::CloudWatchLogs::Model::DescribeLogStreamsOutcome& Outcome, const std::shared_ptr<const Aws::Client::AsyncCallerContext>& Context);
+	void OnCreateLogGroup(const Aws::CloudWatchLogs::CloudWatchLogsClient* Client, const Aws::CloudWatchLogs::Model::CreateLogGroupRequest& Request, const Aws::CloudWatchLogs::Model::CreateLogGroupOutcome& Outcome, const std::shared_ptr<const Aws::Client::AsyncCallerContext>& Context);
+	void OnCreateLogStream(const Aws::CloudWatchLogs::CloudWatchLogsClient* Client, const Aws::CloudWatchLogs::Model::CreateLogStreamRequest& Request, const Aws::CloudWatchLogs::Model::CreateLogStreamOutcome& Outcome, const std::shared_ptr<const Aws::Client::AsyncCallerContext>& Context);
+	void PutLogEvent(const Aws::CloudWatchLogs::CloudWatchLogsClient* Client, const Aws::CloudWatchLogs::Model::PutLogEventsRequest& Request, const Aws::CloudWatchLogs::Model::PutLogEventsOutcome& Outcome, const std::shared_ptr<const Aws::Client::AsyncCallerContext>& Context);
+};
 
 DECLARE_DELEGATE(FOnCloudWatchCustomMetricsSuccess);
 DECLARE_DELEGATE_OneParam(FOnCloudWatchCustomMetricsFailed, const FString&);
@@ -70,22 +107,35 @@ public:
 	* @param Region [const FString&] Default is set to us-east-1 (North Virginia).
 	**/
 	void SetupClient(const FString& AccessKey, const FString& Secret, const FString& Region = "us-east-1");
+	
 	/**
 	* public FCloudWatchSDKModule::CreateCloudWatchCustomMetricsObject
 	* Creates a Cloud Watch Custom Metrics Object. To Send Custom Metrics
 	* @return [UCloudWatchCustomMetricsObject*] Returns UAWSCloudWatchCustomMetricsObject*. Use this to Send Custom Metrics and manage response.
 	**/
 	UCloudWatchCustomMetricsObject* CreateCloudWatchCustomMetricsObject(const FString& NameSpace, const FString& GroupName);
+
+	/**
+	* public FCloudWatchSDKModule::CreateLogsCustomEventObject
+	* Creates Cloud Custom Event Object. To Send Custom Logs
+	* @param GroupName [const FString&] Group Name for the Log;
+	* @param StreamName [const FString&] Stream Name for the Log;
+	* @return [ULogsCustomEventObject*] Returns ULogsCustomEventObject*. Use this to Send Custom Logs.
+	**/
+	ULogsCustomEventObject* CreateLogsCustomEventObject(const FString& GroupName, const FString& StreamName);
 private:
 	Aws::CloudWatch::CloudWatchClient* CloudWatchClient;
+	Aws::CloudWatchLogs::CloudWatchLogsClient* LogsClient;
 private:
-    /** Handle to the dll we will load */
 	Aws::SDKOptions options;
+    /** Handle to the dll we will load */
 	static void* AWSCoreLibraryHandle;
 	static void* AWSCommonLibraryHandle;
 	static void* AWSEventStreamLibraryHandle;
 	static void* AWSChecksumsLibraryHandle;
-    static void* CloudWatchSDKLibraryHandle;
+    static void* AWSCloudWatchLibraryHandle;
+	static void* AWSLogsLibraryHandle;
+
     static bool LoadDependency(const FString& Dir, const FString& Name, void*& Handle);
     static void FreeDependency(void*& Handle);
 

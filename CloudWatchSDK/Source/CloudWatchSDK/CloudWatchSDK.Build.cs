@@ -40,40 +40,39 @@ public class CloudWatchSDK : ModuleRules
 
         if (bHasGameLiftSDK)
         {
-            if (Target.Type == TargetRules.TargetType.Server)
-            {
-                PublicDefinitions.Add("WITH_CLOUDWATCH=1");    
+           PublicDefinitions.Add("WITH_CLOUDWATCH=1");    
                 
-                PublicLibraryPaths.Add(SDKDirectory);
-                // aws-c-common
-                PublicAdditionalLibraries.Add(System.IO.Path.Combine(SDKDirectory, "aws-c-common.lib"));
-                PublicDelayLoadDLLs.Add("aws-c-common.dll");
-                RuntimeDependencies.Add(System.IO.Path.Combine(SDKDirectory, "aws-c-common.dll"));
+           PublicLibraryPaths.Add(SDKDirectory);
+                
+           // aws-c-common
+           PublicAdditionalLibraries.Add(System.IO.Path.Combine(SDKDirectory, "aws-c-common.lib"));
+           PublicDelayLoadDLLs.Add("aws-c-common.dll");
+           RuntimeDependencies.Add(System.IO.Path.Combine(SDKDirectory, "aws-c-common.dll"));
 
-                // aws-c-event-stream
-                PublicAdditionalLibraries.Add(System.IO.Path.Combine(SDKDirectory, "aws-c-event-stream.lib"));
-                PublicDelayLoadDLLs.Add("aws-c-event-stream.dll");
-                RuntimeDependencies.Add(System.IO.Path.Combine(SDKDirectory, "aws-c-event-stream.dll"));
+           // aws-c-event-stream
+           PublicAdditionalLibraries.Add(System.IO.Path.Combine(SDKDirectory, "aws-c-event-stream.lib"));
+           PublicDelayLoadDLLs.Add("aws-c-event-stream.dll");
+           RuntimeDependencies.Add(System.IO.Path.Combine(SDKDirectory, "aws-c-event-stream.dll"));
 
-                // aws-checksums
-                PublicAdditionalLibraries.Add(System.IO.Path.Combine(SDKDirectory, "aws-checksums.lib"));
-                PublicDelayLoadDLLs.Add("aws-checksums.dll");
-                RuntimeDependencies.Add(System.IO.Path.Combine(SDKDirectory, "aws-checksums.dll"));
+           // aws-checksums
+           PublicAdditionalLibraries.Add(System.IO.Path.Combine(SDKDirectory, "aws-checksums.lib"));
+           PublicDelayLoadDLLs.Add("aws-checksums.dll");
+           RuntimeDependencies.Add(System.IO.Path.Combine(SDKDirectory, "aws-checksums.dll"));
 
-                // aws-cpp-sdk-core
-                PublicAdditionalLibraries.Add(System.IO.Path.Combine(SDKDirectory, "aws-cpp-sdk-core.lib"));
-                PublicDelayLoadDLLs.Add("aws-cpp-sdk-core.dll");
-                RuntimeDependencies.Add(System.IO.Path.Combine(SDKDirectory, "aws-cpp-sdk-core.dll"));
+           // aws-cpp-sdk-core
+           PublicAdditionalLibraries.Add(System.IO.Path.Combine(SDKDirectory, "aws-cpp-sdk-core.lib"));
+           PublicDelayLoadDLLs.Add("aws-cpp-sdk-core.dll");
+           RuntimeDependencies.Add(System.IO.Path.Combine(SDKDirectory, "aws-cpp-sdk-core.dll"));
 
-                // aws-cpp-sdk-monitoring
-                PublicAdditionalLibraries.Add(System.IO.Path.Combine(SDKDirectory, "aws-cpp-sdk-monitoring.lib"));
-                PublicDelayLoadDLLs.Add("aws-cpp-sdk-monitoring.dll");
-                RuntimeDependencies.Add(System.IO.Path.Combine(SDKDirectory, "aws-cpp-sdk-monitoring.dll"));
-            }
-            else
-            {
-                PublicDefinitions.Add("WITH_CLOUDWATCH=0");
-            }
+            // aws-cpp-sdk-monitoring
+            PublicAdditionalLibraries.Add(System.IO.Path.Combine(SDKDirectory, "aws-cpp-sdk-monitoring.lib"));
+            PublicDelayLoadDLLs.Add("aws-cpp-sdk-monitoring.dll");
+            RuntimeDependencies.Add(System.IO.Path.Combine(SDKDirectory, "aws-cpp-sdk-monitoring.dll"));
+
+            // aws-cpp-sdk-logs
+            PublicAdditionalLibraries.Add(System.IO.Path.Combine(SDKDirectory, "aws-cpp-sdk-logs.lib"));
+            PublicDelayLoadDLLs.Add("aws-cpp-sdk-logs.dll");
+            RuntimeDependencies.Add(System.IO.Path.Combine(SDKDirectory, "aws-cpp-sdk-logs.dll"));
         }
         else
         {
