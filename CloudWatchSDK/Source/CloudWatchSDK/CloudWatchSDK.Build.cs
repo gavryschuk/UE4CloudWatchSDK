@@ -40,8 +40,9 @@ public class CloudWatchSDK : ModuleRules
 
         if (bHasGameLiftSDK)
         {
-           PublicDefinitions.Add("WITH_CLOUDWATCH=1");    
-                
+           if (Target.Type == TargetRules.TargetType.Server) PublicDefinitions.Add("WITH_CLOUDWATCH=1");
+           else PublicDefinitions.Add("WITH_CLOUDWATCH=0");
+
            PublicLibraryPaths.Add(SDKDirectory);
                 
            // aws-c-common
