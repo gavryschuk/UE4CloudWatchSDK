@@ -75,23 +75,94 @@ void ULogsCustomEventObject::GetSequenceToken()
 	StreamsRequest.SetLogGroupName(TCHAR_TO_UTF8(*GroupName));
 	StreamsRequest.SetLogStreamNamePrefix(TCHAR_TO_UTF8(*StreamName));
 	
+	// setup handler
+	Aws::CloudWatchLogs::DescribeLogStreamsResponseReceivedHandler StreamRequestHandler;
+	StreamRequestHandler = std::bind(&ULogsCustomEventObject::OnDescribeLogStreams, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, std::placeholders::_4);
+
 	// call DescribeLogStream
-	auto Outcome = LogsClient->DescribeLogStreams(StreamsRequest);
-	if (!Outcome.IsSuccess()) 
+	LogsClient->DescribeLogStreamsAsync(StreamsRequest, StreamRequestHandler);
+#endif
+}
+
+void ULogsCustomEventObject::OnDescribeLogStreams(const Aws::CloudWatchLogs::CloudWatchLogsClient* Client, const Aws::CloudWatchLogs::Model::DescribeLogStreamsRequest& Request, const Aws::CloudWatchLogs::Model::DescribeLogStreamsOutcome& Outcome, const std::shared_ptr<const Aws::Client::AsyncCallerContext>& Context)
+{
+#if WITH_CLOUDWATCH
+	if (!Outcome.IsSuccess())
 	{
 		LOG_WARNING(FString::Printf(TEXT("On Describe Log Streams: %s"), *FString(Outcome.GetError().GetMessage().c_str())));
 		if (!bIsGroupCreated) RegisterGroup(); // register a group and stream later
 	}
-	else 
+	else
 	{
+		LOG_NORMAL(FString::Printf(TEXT("Stream And Group Exist. got a sequence Token: %s"), *FString(Outcome.GetResult().GetLogStreams()[0].GetUploadSequenceToken().c_str())));
 		// goup and stream are present on CLoudWatchLogs
 		bIsGroupCreated = true;
 		bIsStreamCreated = true;
 		// setup sequence token
-		mSequenceToken = FString(Outcome.GetResult().GetNextToken().c_str());
+		mSequenceToken = FString(Outcome.GetResult().GetLogStreams()[0].GetUploadSequenceToken().c_str());
 		// send logs
 		PutLogs();
+	}
+#endif
 }
+
+void ULogsCustomEventObject::RegisterGroup()
+{
+#if WITH_CLOUDWATCH
+	// if Log Goup is absent (new Log Group)
+	if (!bIsGroupCreated) {
+		// generate CreateLogGroup Request
+		Aws::CloudWatchLogs::Model::CreateLogGroupRequest LogGroupRequest;
+		LogGroupRequest.SetLogGroupName(TCHAR_TO_UTF8(*GroupName));
+
+		// setup handler
+		Aws::CloudWatchLogs::CreateLogGroupResponseReceivedHandler LogGroupRequestHandler;
+		LogGroupRequestHandler = std::bind(&ULogsCustomEventObject::OnCreateLogGroup, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, std::placeholders::_4);
+
+		// call Generate Log Group
+		LogsClient->CreateLogGroupAsync(LogGroupRequest, LogGroupRequestHandler);
+	}
+#endif
+}
+
+void ULogsCustomEventObject::OnCreateLogGroup(const Aws::CloudWatchLogs::CloudWatchLogsClient* Client, const Aws::CloudWatchLogs::Model::CreateLogGroupRequest& Request, const Aws::CloudWatchLogs::Model::CreateLogGroupOutcome& Outcome, const std::shared_ptr<const Aws::Client::AsyncCallerContext>& Context)
+{
+#if WITH_CLOUDWATCH
+	if (!Outcome.IsSuccess()) LOG_WARNING(FString::Printf(TEXT("Log Group Was Not Registered: %s"), *FString(Outcome.GetError().GetMessage().c_str())));
+
+	LOG_NORMAL("New Group Exists or Registered.");
+
+	bIsGroupCreated = true;
+	// register stream
+	RegisterStream();
+#endif
+}
+
+void ULogsCustomEventObject::RegisterStream()
+{
+#if WITH_CLOUDWATCH
+	// if Log Stream is absent (new Log Stream)
+	if (!bIsStreamCreated) {
+		// generate CreateStreamGroup Request
+		Aws::CloudWatchLogs::Model::CreateLogStreamRequest LogStreamRequest;
+		LogStreamRequest.SetLogGroupName(TCHAR_TO_UTF8(*GroupName));
+		LogStreamRequest.SetLogStreamName(TCHAR_TO_UTF8(*StreamName));
+
+		// setup handler
+		Aws::CloudWatchLogs::CreateLogStreamResponseReceivedHandler LogStreamRequestHandler;
+		LogStreamRequestHandler = std::bind(&ULogsCustomEventObject::OnCreateLogStream, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, std::placeholders::_4);
+		// call Generate Stream Group
+		LogsClient->CreateLogStreamAsync(LogStreamRequest, LogStreamRequestHandler);
+	}
+#endif
+}
+
+void ULogsCustomEventObject::OnCreateLogStream(const Aws::CloudWatchLogs::CloudWatchLogsClient* Client, const Aws::CloudWatchLogs::Model::CreateLogStreamRequest& Request, const Aws::CloudWatchLogs::Model::CreateLogStreamOutcome& Outcome, const std::shared_ptr<const Aws::Client::AsyncCallerContext>& Context)
+{
+#if WITH_CLOUDWATCH
+	if (!Outcome.IsSuccess()) LOG_WARNING(FString::Printf(TEXT("Log Stream Was Not Registered: %s. Log Process is interrupted"), *FString(Outcome.GetError().GetMessage().c_str())));
+	// stop the log
+	bIsRunning = false;
 #endif
 }
 
@@ -116,19 +187,29 @@ void ULogsCustomEventObject::PutLogs()
 	//Add Sequence Token to the request
 	if( mSequenceToken.Len() > 0 ) LogEventRequest.SetSequenceToken(TCHAR_TO_UTF8(*mSequenceToken));
 
+	// setup handler
+	Aws::CloudWatchLogs::PutLogEventsResponseReceivedHandler PutLogEventHandler;
+	PutLogEventHandler = std::bind(&ULogsCustomEventObject::PutLogEvent, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, std::placeholders::_4);
+
 	// send Custom Log
-	auto Outcome = LogsClient->PutLogEvents(LogEventRequest);
+	LogsClient->PutLogEventsAsync(LogEventRequest, PutLogEventHandler);
+#endif
+}
+
+void ULogsCustomEventObject::PutLogEvent(const Aws::CloudWatchLogs::CloudWatchLogsClient* Client, const Aws::CloudWatchLogs::Model::PutLogEventsRequest& Request, const Aws::CloudWatchLogs::Model::PutLogEventsOutcome& Outcome, const std::shared_ptr<const Aws::Client::AsyncCallerContext>& Context)
+{
+#if WITH_CLOUDWATCH
 	if (!Outcome.IsSuccess()) {
 		// we are failed!
 		LOG_WARNING(FString::Printf(TEXT("PutLogEvent Error: %s"), *FString(Outcome.GetError().GetMessage().c_str())));
 		// clean everything for the plugin to recreate a group and stream
-		mSequenceToken = FString("");
+		mSequenceToken.Empty(0);
 		bIsGroupCreated = false;
 		bIsStreamCreated = false;
 	}
-	else 
+	else
 	{
-		LOG_NORMAL("CLOUDWATCHDEBUG Logs SENT.");
+		LOG_NORMAL("Logs Successfully SENT.");
 		// get sequence token for next request
 		mSequenceToken = FString(Outcome.GetResult().GetNextSequenceToken().c_str());
 		// get rejected info
@@ -136,58 +217,9 @@ void ULogsCustomEventObject::PutLogs()
 		Outcome.GetResult().GetRejectedLogEventsInfo().Jsonize().AsString(RejectedInfo);
 		if (!RejectedInfo.empty()) LOG_WARNING(FString::Printf(TEXT("PutLogEvent Rejected: %s"), RejectedInfo.c_str()));
 	}
-	
+
 	// stop the log
 	bIsRunning = false;
-#endif
-}
-
-void ULogsCustomEventObject::RegisterGroup() 
-{
-#if WITH_CLOUDWATCH
-	// if Log Goup is absent (new Log Group)
-	if (!bIsGroupCreated) {
-		// generate CreateLogGroup Request
-		Aws::CloudWatchLogs::Model::CreateLogGroupRequest LogGroupRequest;
-		LogGroupRequest.SetLogGroupName(TCHAR_TO_UTF8(*GroupName));
-
-		// call Generate Log Group
-		auto Outcome = LogsClient->CreateLogGroup(LogGroupRequest);
-		if (!Outcome.IsSuccess()) LOG_WARNING(FString::Printf(TEXT("Log Group Was Not Registered: %s"), *FString(Outcome.GetError().GetMessage().c_str())));
-
-		LOG_NORMAL("CLOUDWATCHDEBUG Registered a group.");
-
-		bIsGroupCreated = true;
-		// register stream
-		RegisterStream();
-	}
-#endif
-}
-
-void ULogsCustomEventObject::RegisterStream()
-{
-#if WITH_CLOUDWATCH
-	// if Log Stream is absent (new Log Stream)
-	if (!bIsStreamCreated) {
-		// generate CreateStreamGroup Request
-		Aws::CloudWatchLogs::Model::CreateLogStreamRequest LogStreamRequest;
-		LogStreamRequest.SetLogGroupName(TCHAR_TO_UTF8(*GroupName));
-		LogStreamRequest.SetLogStreamName(TCHAR_TO_UTF8(*StreamName));
-		// call Generate Stream Group
-		auto Outcome = LogsClient->CreateLogStream(LogStreamRequest);
-		if (!Outcome.IsSuccess()) {
-			LOG_WARNING(FString::Printf(TEXT("Log Stream Was Not Registered: %s. Log Process is interrupted"), *FString(Outcome.GetError().GetMessage().c_str())));
-			// stop the log
-			bIsRunning = false;
-		}
-		else 
-		{
-			LOG_NORMAL("CLOUDWATCHDEBUG Registered a Stream.");
-			bIsStreamCreated = true;
-			// send logs
-			PutLogs();
-		}
-	}
 #endif
 }
 
