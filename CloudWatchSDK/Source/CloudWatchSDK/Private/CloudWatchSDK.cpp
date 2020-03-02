@@ -54,7 +54,7 @@ void ULogsCustomEventObject::Call(const FString& Message, int stackLimit /* = 1*
 
 		//if Sequence Token is absent => Request Sequence Token
 		if (mSequenceToken.Len() == 0) {
-			GetSequenceToken();
+			DescribeLogGroups();
 			return;
 		}
 		
@@ -67,7 +67,49 @@ void ULogsCustomEventObject::Call(const FString& Message, int stackLimit /* = 1*
 #endif
 }
 
-void ULogsCustomEventObject::GetSequenceToken()
+void ULogsCustomEventObject::DescribeLogGroups()
+{
+#if WITH_CLOUDWATCH
+	// generate describeLogGroups Request
+	Aws::CloudWatchLogs::Model::DescribeLogGroupsRequest GroupsRequest;
+	GroupsRequest.SetLogGroupNamePrefix(TCHAR_TO_UTF8(*GroupName));
+
+	// setup handler
+	Aws::CloudWatchLogs::DescribeLogGroupsResponseReceivedHandler GroupsRequestHandler;
+	GroupsRequestHandler = std::bind(&ULogsCustomEventObject::OnDescribeLogGroups, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, std::placeholders::_4);
+
+	// call DescribeLogStream
+	LogsClient->DescribeLogGroupsAsync(GroupsRequest, GroupsRequestHandler);
+#endif
+}
+
+void ULogsCustomEventObject::OnDescribeLogGroups(const Aws::CloudWatchLogs::CloudWatchLogsClient* Client, const Aws::CloudWatchLogs::Model::DescribeLogGroupsRequest& Request, const Aws::CloudWatchLogs::Model::DescribeLogGroupsOutcome& Outcome, const std::shared_ptr<const Aws::Client::AsyncCallerContext>& Context)
+{
+#if WITH_CLOUDWATCH
+	if (!Outcome.IsSuccess())
+	{
+		LOG_WARNING(FString::Printf(TEXT("On Describe Log Groups: %s"), *FString(Outcome.GetError().GetMessage().c_str())));
+		if (!bIsGroupCreated) RegisterGroup(); // register a group and stream later
+	}
+	else
+	{
+		if (Outcome.GetResult().GetLogGroups().size() > 0) {
+			bIsGroupCreated = true;
+			LOG_NORMAL("Log Group exists! registering Stream.");
+			// Group exists -> register stream
+			DescribeLogStreams();
+		}
+		else
+		{
+			LOG_NORMAL("Log Group doesn't exist! registering Group.");
+			// Group is absent -> register group
+			RegisterGroup();
+		}
+	}
+#endif
+}
+
+void ULogsCustomEventObject::DescribeLogStreams()
 {
 #if WITH_CLOUDWATCH
 	// generate describeLogStream Request
@@ -90,18 +132,27 @@ void ULogsCustomEventObject::OnDescribeLogStreams(const Aws::CloudWatchLogs::Clo
 	if (!Outcome.IsSuccess())
 	{
 		LOG_WARNING(FString::Printf(TEXT("On Describe Log Streams: %s"), *FString(Outcome.GetError().GetMessage().c_str())));
-		if (!bIsGroupCreated) RegisterGroup(); // register a group and stream later
+		RegisterStream();
 	}
 	else
 	{
-		LOG_NORMAL(FString::Printf(TEXT("Stream And Group Exist. got a sequence Token: %s"), *FString(Outcome.GetResult().GetLogStreams()[0].GetUploadSequenceToken().c_str())));
-		// goup and stream are present on CLoudWatchLogs
-		bIsGroupCreated = true;
-		bIsStreamCreated = true;
-		// setup sequence token
-		mSequenceToken = FString(Outcome.GetResult().GetLogStreams()[0].GetUploadSequenceToken().c_str());
-		// send logs
-		PutLogs();
+		if (Outcome.GetResult().GetLogStreams().size() > 0) {
+			// goup and stream are present on CLoudWatchLogs
+			bIsGroupCreated = true;
+			bIsStreamCreated = true;
+			// setup sequence token
+			mSequenceToken = FString(Outcome.GetResult().GetLogStreams()[0].GetUploadSequenceToken().c_str());
+			// log
+			LOG_NORMAL(FString::Printf(TEXT("Stream And Group Exist. got a sequence Token: %s"), *mSequenceToken));
+			// send logs
+			PutLogs();
+		}
+		else
+		{
+			LOG_NORMAL("Log Stream doesn't exist! registering Stream.");
+			// Stream is absent -> register stream
+			RegisterStream();
+		}
 	}
 #endif
 }
@@ -128,13 +179,18 @@ void ULogsCustomEventObject::RegisterGroup()
 void ULogsCustomEventObject::OnCreateLogGroup(const Aws::CloudWatchLogs::CloudWatchLogsClient* Client, const Aws::CloudWatchLogs::Model::CreateLogGroupRequest& Request, const Aws::CloudWatchLogs::Model::CreateLogGroupOutcome& Outcome, const std::shared_ptr<const Aws::Client::AsyncCallerContext>& Context)
 {
 #if WITH_CLOUDWATCH
-	if (!Outcome.IsSuccess()) LOG_WARNING(FString::Printf(TEXT("Log Group Was Not Registered: %s"), *FString(Outcome.GetError().GetMessage().c_str())));
+	if (!Outcome.IsSuccess()) {
+		LOG_WARNING(FString::Printf(TEXT("Log Group Was Not Registered: %s.Process is interrupted."), *FString(Outcome.GetError().GetMessage().c_str())));
+		bIsRunning = false;
+	}
+	else
+	{
+		LOG_NORMAL("New Group is Registered.");
 
-	LOG_NORMAL("New Group Exists or Registered.");
-
-	bIsGroupCreated = true;
-	// register stream
-	RegisterStream();
+		bIsGroupCreated = true;
+		// register stream
+		RegisterStream();
+	}
 #endif
 }
 
@@ -160,7 +216,14 @@ void ULogsCustomEventObject::RegisterStream()
 void ULogsCustomEventObject::OnCreateLogStream(const Aws::CloudWatchLogs::CloudWatchLogsClient* Client, const Aws::CloudWatchLogs::Model::CreateLogStreamRequest& Request, const Aws::CloudWatchLogs::Model::CreateLogStreamOutcome& Outcome, const std::shared_ptr<const Aws::Client::AsyncCallerContext>& Context)
 {
 #if WITH_CLOUDWATCH
-	if (!Outcome.IsSuccess()) LOG_WARNING(FString::Printf(TEXT("Log Stream Was Not Registered: %s. Log Process is interrupted"), *FString(Outcome.GetError().GetMessage().c_str())));
+	if (!Outcome.IsSuccess()) {
+		LOG_WARNING(FString::Printf(TEXT("Log Stream Was Not Registered: %s. Log Process is interrupted"), *FString(Outcome.GetError().GetMessage().c_str())));
+	}
+	else 
+	{
+		LOG_NORMAL("New Stream is Registered.");
+		bIsStreamCreated = true;
+	}
 	// stop the log
 	bIsRunning = false;
 #endif
@@ -209,13 +272,13 @@ void ULogsCustomEventObject::PutLogEvent(const Aws::CloudWatchLogs::CloudWatchLo
 	}
 	else
 	{
-		LOG_NORMAL("Logs Successfully SENT.");
 		// get sequence token for next request
 		mSequenceToken = FString(Outcome.GetResult().GetNextSequenceToken().c_str());
+		LOG_NORMAL(FString::Printf(TEXT("Logs Successfully SENT. Next Squence token: %s"),*mSequenceToken));
 		// get rejected info
 		Aws::String RejectedInfo;
 		Outcome.GetResult().GetRejectedLogEventsInfo().Jsonize().AsString(RejectedInfo);
-		if (!RejectedInfo.empty()) LOG_WARNING(FString::Printf(TEXT("PutLogEvent Rejected: %s"), RejectedInfo.c_str()));
+		if (RejectedInfo.length()>0) LOG_WARNING(FString::Printf(TEXT("PutLogEvent Rejected: %s"), *FString(RejectedInfo.c_str())));
 	}
 
 	// stop the log

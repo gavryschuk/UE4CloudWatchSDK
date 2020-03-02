@@ -30,6 +30,7 @@
 #include <aws/logs/CloudWatchLogsClient.h>
 #include <aws/logs/model/InputLogEvent.h>
 #include <aws/logs/model/DescribeLogStreamsRequest.h>
+#include <aws/logs/model/DescribeLogGroupsRequest.h>
 #include <aws/logs/model/CreateLogGroupRequest.h>
 #include <aws/logs/model/CreateLogStreamRequest.h>
 #include <aws/logs/model/PutLogEventsRequest.h>
@@ -60,8 +61,12 @@ public:
 
 private:
 	
-	void GetSequenceToken();
+	void DescribeLogStreams();
 	void OnDescribeLogStreams(const Aws::CloudWatchLogs::CloudWatchLogsClient* Client, const Aws::CloudWatchLogs::Model::DescribeLogStreamsRequest& Request, const Aws::CloudWatchLogs::Model::DescribeLogStreamsOutcome& Outcome, const std::shared_ptr<const Aws::Client::AsyncCallerContext>& Context);
+
+	void DescribeLogGroups();
+	void OnDescribeLogGroups(const Aws::CloudWatchLogs::CloudWatchLogsClient* Client, const Aws::CloudWatchLogs::Model::DescribeLogGroupsRequest& Request, const Aws::CloudWatchLogs::Model::DescribeLogGroupsOutcome& Outcome, const std::shared_ptr<const Aws::Client::AsyncCallerContext>& Context);
+
 
 	void RegisterGroup();
 	void OnCreateLogGroup(const Aws::CloudWatchLogs::CloudWatchLogsClient* Client, const Aws::CloudWatchLogs::Model::CreateLogGroupRequest& Request, const Aws::CloudWatchLogs::Model::CreateLogGroupOutcome& Outcome, const std::shared_ptr<const Aws::Client::AsyncCallerContext>& Context);
